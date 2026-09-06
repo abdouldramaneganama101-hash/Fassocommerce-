@@ -1,10 +1,10 @@
 name: Build Fasso Commerce APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Télécharger le projet
+      - name: Télécharger le dépôt
         uses: actions/checkout@v7
 
       - name: Installer Java 17
@@ -33,14 +33,103 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Vérifier Gradle
-        run: gradle --version
+      - name: Sélectionner le projet SANS LOGO
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf /tmp/fasso_project
+          mkdir -p /tmp/fasso_project
+
+          SELECTED_ZIP=""
+          SELECTED_DIR=""
+
+          while IFS= read -r -d '' ZIP; do
+            TEST_DIR="$(mktemp -d /tmp/fasso_test_XXXXXX)"
+            unzip -q "$ZIP" -d "$TEST_DIR"
+
+            SETTINGS="$(find "$TEST_DIR" -type f -name 'settings.gradle.kts' -print -quit || true)"
+
+            if [ -z "$SETTINGS" ]; then
+              rm -rf "$TEST_DIR"
+              continue
+            fi
+
+            PROJECT="$(dirname "$SETTINGS")"
+
+            if [ ! -f "$PROJECT/app/build.gradle.kts" ]; then
+              rm -rf "$TEST_DIR"
+              continue
+            fi
+
+            MAIN="$(find "$PROJECT/app/src/main/java" -type f -name 'MainActivity.java' -print -quit || true)"
+
+            if [ -n "$MAIN" ] && grep -q 'R\.drawable\.fasso_logo' "$MAIN"; then
+              rm -rf "$TEST_DIR"
+              continue
+            fi
+
+            SELECTED_ZIP="$ZIP"
+            SELECTED_DIR="$PROJECT"
+            break
+          done < <(find . -type f -name '*.zip' -print0)
+
+          if [ -z "$SELECTED_ZIP" ]; then
+            echo "Aucun ZIP Android SANS LOGO valide n'a été trouvé."
+            exit 1
+          fi
+
+          echo "ZIP sélectionné : $SELECTED_ZIP"
+          echo "Projet sélectionné : $SELECTED_DIR"
+
+          cp -a "$SELECTED_DIR"/. /tmp/fasso_project/
+
+          test -f /tmp/fasso_project/settings.gradle.kts
+          test -f /tmp/fasso_project/app/build.gradle.kts
+          test -f /tmp/fasso_project/app/src/main/java/com/fassocommerce/MainActivity.java
+
+          if grep -q 'R\.drawable\.fasso_logo' /tmp/fasso_project/app/src/main/java/com/fassocommerce/MainActivity.java; then
+            echo "ERREUR : l'ancienne référence au logo est encore présente."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=/tmp/fasso_project" >> "$GITHUB_ENV"
+
+      - name: Nettoyer et vérifier le projet
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+
+          rm -rf app/build
+
+          echo "Projet Android utilisé : $(pwd)"
+
+          ls -la
+
+          test -d app
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
 
       - name: Compiler l'APK
-        run: gradle :app:assembleDebug --no-daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+
+          gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Vérifier l'APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+          ls -lh "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
           name: Fasso-Commerce-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: /tmp/fasso_project/app/build/outputs/apk/debug/app-debug.apk
