@@ -35,29 +35,32 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Vérifier les fichiers disponibles
-        run: |
-          echo "===== ZIP DISPONIBLES ====="
-          find . -maxdepth 1 -type f -iname "*.zip" -print
-
-      - name: Sélectionner le nouveau projet
+      - name: Rechercher automatiquement le nouveau ZIP
         run: |
           set -e
 
-          ZIP="Fasso-Commerce-ACCUEIL-ADMIN.zip"
+          echo "===== TOUS LES ZIP DU DEPOT ====="
+          find . -maxdepth 1 -type f -iname "*.zip" -print
 
-          echo "===== ZIP À COMPILER ====="
-          echo "$ZIP"
+          echo "===== RECHERCHE DU ZIP ACCUEIL + ADMIN ====="
 
-          if [ ! -f "$ZIP" ]; then
-            echo "ERREUR : le fichier $ZIP est introuvable."
+          ZIP=$(find . -maxdepth 1 -type f -iname "*ACCUEIL*ADMIN*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR : aucun ZIP ACCUEIL + ADMIN trouvé."
+            echo "Liste complète :"
+            find . -maxdepth 1 -type f -print
             exit 1
           fi
+
+          echo "ZIP TROUVÉ : $ZIP"
 
           rm -rf /tmp/fasso_project
           mkdir -p /tmp/fasso_project
 
           unzip -q "$ZIP" -d /tmp/fasso_project
+
+          echo "===== RECHERCHE DU PROJET ANDROID ====="
 
           SETTINGS=$(find /tmp/fasso_project \
             -type f \
@@ -65,25 +68,27 @@ jobs:
             | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERREUR : projet Android introuvable."
+            echo "ERREUR : settings.gradle.kts introuvable."
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Projet trouvé : $PROJECT_DIR"
+          echo "PROJET TROUVÉ : $PROJECT_DIR"
 
           if [ ! -d "$PROJECT_DIR/app" ]; then
             echo "ERREUR : dossier app introuvable."
             exit 1
           fi
 
-          echo "===== VÉRIFICATION MAIN ACTIVITY ====="
+          echo "===== VÉRIFICATION DU LOGO ====="
 
-          if [ ! -f "$PROJECT_DIR/app/src/main/java/com/fassocommerce/MainActivity.java" ]; then
-            echo "ERREUR : MainActivity.java introuvable."
+          if [ ! -f "$PROJECT_DIR/app/src/main/res/drawable/fasso_logo.png" ]; then
+            echo "ERREUR : logo fasso_logo.png introuvable."
             exit 1
           fi
+
+          echo "Logo : OK"
 
           echo "===== VÉRIFICATION ADMINISTRATION ====="
 
@@ -92,35 +97,29 @@ jobs:
             exit 1
           fi
 
-          echo "===== VÉRIFICATION LOGO ====="
+          echo "Administration : OK"
 
-          if [ ! -f "$PROJECT_DIR/app/src/main/res/drawable/fasso_logo.png" ]; then
-            echo "ERREUR : fasso_logo.png introuvable."
+          echo "===== VÉRIFICATION MAIN ACTIVITY ====="
+
+          if [ ! -f "$PROJECT_DIR/app/src/main/java/com/fassocommerce/MainActivity.java" ]; then
+            echo "ERREUR : MainActivity.java introuvable."
             exit 1
           fi
 
-          echo "===== VÉRIFICATION MANIFEST ====="
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml" ]; then
-            echo "ERREUR : AndroidManifest.xml introuvable."
-            exit 1
-          fi
+          echo "Accueil : OK"
 
           echo "===== PROJET VALIDÉ ====="
-          echo "Accueil : OK"
-          echo "Administration : OK"
-          echo "Logo : OK"
 
           rm -rf /tmp/final_fasso_project
           cp -a "$PROJECT_DIR" /tmp/final_fasso_project
 
-      - name: Vérification finale avant compilation
+      - name: Vérification finale
         run: |
           set -e
 
           cd /tmp/final_fasso_project
 
-          echo "===== FICHIERS DE L'APPLICATION ====="
+          echo "===== STRUCTURE DE L'APPLICATION ====="
           find app/src/main -type f | sort
 
           echo "===== LOGO ====="
@@ -128,6 +127,9 @@ jobs:
 
           echo "===== ADMINISTRATION ====="
           ls -lh app/src/main/java/com/fassocommerce/AdminActivity.java
+
+          echo "===== MAIN ACTIVITY ====="
+          ls -lh app/src/main/java/com/fassocommerce/MainActivity.java
 
       - name: Compiler l'APK
         run: |
@@ -139,7 +141,7 @@ jobs:
             --no-daemon \
             --stacktrace
 
-      - name: Vérifier l'APK final
+      - name: Vérifier l'APK
         run: |
           set -e
 
@@ -150,9 +152,8 @@ jobs:
             exit 1
           fi
 
-          echo "===== APK FINAL ====="
+          echo "===== APK GÉNÉRÉ ====="
           ls -lh "$APK"
-          echo "APK généré avec succès."
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
