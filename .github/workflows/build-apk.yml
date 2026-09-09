@@ -70,12 +70,28 @@ jobs:
       # ==========================================================
       # 5. INSTALLATION ANDROID SDK
       # ==========================================================
-      - name: Installer Android SDK 36
+            - name: Préparer Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platforms;android-36
-            build-tools;36.0.0
+          accept-android-sdk-licenses: true
+
+      - name: Installer Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Vérifier Android SDK 36
+        run: |
+          echo "=== PLATEFORME ANDROID 36 ==="
+          sdkmanager --list_installed | grep "platforms;android-36" || true
+
+          echo "=== BUILD TOOLS 36.0.0 ==="
+          sdkmanager --list_installed | grep "build-tools;36.0.0" || true
+
+          echo "=== SDK PRET ==="
 
       # ==========================================================
       # 6. VERIFICATION ANDROID SDK
