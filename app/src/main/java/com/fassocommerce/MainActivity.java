@@ -29,7 +29,7 @@ public class MainActivity extends Activity {
 
         // LOGO
         ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.fasso_logo);
+        
         logo.setAdjustViewBounds(true);
         logo.setPadding(0, 10, 0, 20);
 
