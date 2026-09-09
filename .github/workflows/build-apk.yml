@@ -1,9 +1,10 @@
-name: Build Fasso Commerce - Test complet
+name: Build Fasso Commerce APK
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
@@ -11,152 +12,375 @@ permissions:
 
 jobs:
   build:
+    name: Construire Fasso Commerce
     runs-on: ubuntu-latest
 
     steps:
-      - name: Télécharger le dépôt
+
+      # ==========================================================
+      # 1. RECUPERATION DU PROJET
+      # ==========================================================
+      - name: Télécharger le projet
         uses: actions/checkout@v5
 
+      # ==========================================================
+      # 2. INFORMATIONS SUR L'ENVIRONNEMENT
+      # ==========================================================
+      - name: Vérifier l'environnement
+        run: |
+          echo "=========================================="
+          echo "       FASSO COMMERCE - VERIFICATION"
+          echo "=========================================="
+          echo ""
+          echo "Système :"
+          uname -a
+          echo ""
+          echo "Java disponible :"
+          java -version || true
+          echo ""
+          echo "Architecture :"
+          uname -m
+          echo ""
+          echo "Répertoire actuel :"
+          pwd
+          echo ""
+
+      # ==========================================================
+      # 3. INSTALLATION DE JAVA 17
+      # ==========================================================
       - name: Installer Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Installer Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Installer les composants Android
+      # ==========================================================
+      # 4. VERIFICATION JAVA
+      # ==========================================================
+      - name: Vérifier Java 17
         run: |
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          echo "=========================================="
+          echo "             JAVA 17"
+          echo "=========================================="
+          java -version
+          echo ""
+          echo "JAVA_HOME = $JAVA_HOME"
+          echo ""
 
+      # ==========================================================
+      # 5. INSTALLATION ANDROID SDK
+      # ==========================================================
+      - name: Installer Android SDK 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: |
+            platforms;android-36
+            build-tools;36.0.0
+
+      # ==========================================================
+      # 6. VERIFICATION ANDROID SDK
+      # ==========================================================
+      - name: Vérifier Android SDK
+        run: |
+          echo "=========================================="
+          echo "          ANDROID SDK 36"
+          echo "=========================================="
+          echo ""
+          echo "ANDROID_HOME = $ANDROID_HOME"
+          echo ""
+          echo "Plateformes Android installées :"
+          ls -la "$ANDROID_HOME/platforms" || true
+          echo ""
+          echo "Build Tools installés :"
+          ls -la "$ANDROID_HOME/build-tools" || true
+          echo ""
+
+      # ==========================================================
+      # 7. INSTALLATION DE GRADLE
+      # ==========================================================
       - name: Installer Gradle 9.6.0
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
 
-      - name: Rechercher automatiquement le nouveau ZIP
+      # ==========================================================
+      # 8. VERIFICATION DE GRADLE
+      # ==========================================================
+      - name: Vérifier Gradle
         run: |
-          set -e
+          echo "=========================================="
+          echo "             GRADLE"
+          echo "=========================================="
+          gradle --version
+          echo ""
 
-          echo "===== TOUS LES ZIP DU DEPOT ====="
-          find . -maxdepth 1 -type f -iname "*.zip" -print
-
-          echo "===== RECHERCHE DU ZIP ACCUEIL + ADMIN ====="
-
-          ZIP=$(find . -maxdepth 1 -type f -iname "*ACCUEIL*ADMIN*.zip" | head -n 1)
-
-          if [ -z "$ZIP" ]; then
-            echo "ERREUR : aucun ZIP ACCUEIL + ADMIN trouvé."
-            echo "Liste complète :"
-            find . -maxdepth 1 -type f -print
-            exit 1
-          fi
-
-          echo "ZIP TROUVÉ : $ZIP"
-
-          rm -rf /tmp/fasso_project
-          mkdir -p /tmp/fasso_project
-
-          unzip -q "$ZIP" -d /tmp/fasso_project
-
-          echo "===== RECHERCHE DU PROJET ANDROID ====="
-
-          SETTINGS=$(find /tmp/fasso_project \
-            -type f \
-            -name "settings.gradle.kts" \
-            | head -n 1)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERREUR : settings.gradle.kts introuvable."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "PROJET TROUVÉ : $PROJECT_DIR"
-
-          if [ ! -d "$PROJECT_DIR/app" ]; then
-            echo "ERREUR : dossier app introuvable."
-            exit 1
-          fi
-
-          echo "===== VÉRIFICATION DU LOGO ====="
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/res/drawable/fasso_logo.png" ]; then
-            echo "ERREUR : logo fasso_logo.png introuvable."
-            exit 1
-          fi
-
-          echo "Logo : OK"
-
-          echo "===== VÉRIFICATION ADMINISTRATION ====="
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/java/com/fassocommerce/AdminActivity.java" ]; then
-            echo "ERREUR : AdminActivity.java introuvable."
-            exit 1
-          fi
-
-          echo "Administration : OK"
-
-          echo "===== VÉRIFICATION MAIN ACTIVITY ====="
-
-          if [ ! -f "$PROJECT_DIR/app/src/main/java/com/fassocommerce/MainActivity.java" ]; then
-            echo "ERREUR : MainActivity.java introuvable."
-            exit 1
-          fi
-
-          echo "Accueil : OK"
-
-          echo "===== PROJET VALIDÉ ====="
-
-          rm -rf /tmp/final_fasso_project
-          cp -a "$PROJECT_DIR" /tmp/final_fasso_project
-
-      - name: Vérification finale
+      # ==========================================================
+      # 9. VERIFICATION DE LA STRUCTURE DU PROJET
+      # ==========================================================
+      - name: Vérifier la structure Android
         run: |
-          set -e
+          echo "=========================================="
+          echo "       STRUCTURE FASSO COMMERCE"
+          echo "=========================================="
+          echo ""
 
-          cd /tmp/final_fasso_project
+          echo "--- Racine du projet ---"
+          ls -la
+          echo ""
 
-          echo "===== STRUCTURE DE L'APPLICATION ====="
-          find app/src/main -type f | sort
+          echo "--- Vérification du dossier app ---"
+          if [ ! -d "app" ]; then
+            echo "ERREUR : le dossier app est absent."
+            exit 1
+          fi
+          echo "OK : dossier app trouvé."
+          echo ""
 
-          echo "===== LOGO ====="
-          ls -lh app/src/main/res/drawable/fasso_logo.png
+          echo "--- Vérification settings.gradle.kts ---"
+          if [ ! -f "settings.gradle.kts" ]; then
+            echo "ERREUR : settings.gradle.kts est absent."
+            exit 1
+          fi
+          echo "OK : settings.gradle.kts trouvé."
+          echo ""
 
-          echo "===== ADMINISTRATION ====="
-          ls -lh app/src/main/java/com/fassocommerce/AdminActivity.java
+          echo "--- Vérification build.gradle.kts ---"
+          if [ ! -f "build.gradle.kts" ]; then
+            echo "ERREUR : build.gradle.kts est absent."
+            exit 1
+          fi
+          echo "OK : build.gradle.kts trouvé."
+          echo ""
 
-          echo "===== MAIN ACTIVITY ====="
-          ls -lh app/src/main/java/com/fassocommerce/MainActivity.java
+          echo "--- Vérification gradle.properties ---"
+          if [ ! -f "gradle.properties" ]; then
+            echo "ERREUR : gradle.properties est absent."
+            exit 1
+          fi
+          echo "OK : gradle.properties trouvé."
+          echo ""
 
-      - name: Compiler l'APK
+          echo "--- Vérification app/build.gradle.kts ---"
+          if [ ! -f "app/build.gradle.kts" ]; then
+            echo "ERREUR : app/build.gradle.kts est absent."
+            exit 1
+          fi
+          echo "OK : app/build.gradle.kts trouvé."
+          echo ""
+
+          echo "--- Vérification MainActivity ---"
+          if [ ! -f "app/src/main/java/com/fassocommerce/MainActivity.java" ]; then
+            echo "ERREUR : MainActivity.java est absente."
+            exit 1
+          fi
+          echo "OK : MainActivity.java trouvée."
+          echo ""
+
+          echo "--- Vérification AdminActivity ---"
+          if [ ! -f "app/src/main/java/com/fassocommerce/AdminActivity.java" ]; then
+            echo "ERREUR : AdminActivity.java est absente."
+            exit 1
+          fi
+          echo "OK : AdminActivity.java trouvée."
+          echo ""
+
+          echo "--- Vérification ProductStore ---"
+          if [ ! -f "app/src/main/java/com/fassocommerce/ProductStore.java" ]; then
+            echo "ERREUR : ProductStore.java est absent."
+            exit 1
+          fi
+          echo "OK : ProductStore.java trouvé."
+          echo ""
+
+          echo "--- Vérification OrderStore ---"
+          if [ ! -f "app/src/main/java/com/fassocommerce/OrderStore.java" ]; then
+            echo "ERREUR : OrderStore.java est absent."
+            exit 1
+          fi
+          echo "OK : OrderStore.java trouvé."
+          echo ""
+
+          echo "--- Vérification AndroidManifest ---"
+          if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
+            echo "ERREUR : AndroidManifest.xml est absent."
+            exit 1
+          fi
+          echo "OK : AndroidManifest.xml trouvé."
+          echo ""
+
+          echo "=========================================="
+          echo "TOUS LES FICHIERS PRINCIPAUX SONT PRESENTS"
+          echo "=========================================="
+
+      # ==========================================================
+      # 10. AFFICHAGE DE LA CONFIGURATION ANDROID
+      # ==========================================================
+      - name: Vérifier la configuration Android
         run: |
-          set -e
+          echo "=========================================="
+          echo "       CONFIGURATION ANDROID"
+          echo "=========================================="
+          echo ""
+          echo "--- build.gradle.kts racine ---"
+          cat build.gradle.kts
+          echo ""
+          echo "--- settings.gradle.kts ---"
+          cat settings.gradle.kts
+          echo ""
+          echo "--- app/build.gradle.kts ---"
+          cat app/build.gradle.kts
+          echo ""
+          echo "--- gradle.properties ---"
+          cat gradle.properties
+          echo ""
 
-          cd /tmp/final_fasso_project
+      # ==========================================================
+      # 11. VERIFICATION DU MANIFEST
+      # ==========================================================
+      - name: Vérifier AndroidManifest
+        run: |
+          echo "=========================================="
+          echo "          ANDROID MANIFEST"
+          echo "=========================================="
+          cat app/src/main/AndroidManifest.xml
+          echo ""
+
+          if grep -q "MainActivity" app/src/main/AndroidManifest.xml; then
+            echo "OK : MainActivity est déclarée."
+          else
+            echo "ATTENTION : MainActivity n'est pas détectée dans le manifest."
+          fi
+
+          if grep -q "android.intent.action.MAIN" app/src/main/AndroidManifest.xml; then
+            echo "OK : activité principale détectée."
+          else
+            echo "ATTENTION : intent MAIN non détecté."
+          fi
+
+      # ==========================================================
+      # 12. VERIFICATION DES SOURCES JAVA
+      # ==========================================================
+      - name: Vérifier les fichiers Java
+        run: |
+          echo "=========================================="
+          echo "             FICHIERS JAVA"
+          echo "=========================================="
+
+          find app/src/main/java -type f -name "*.java" -print
+
+          echo ""
+          echo "Nombre de fichiers Java :"
+          find app/src/main/java -type f -name "*.java" | wc -l
+
+      # ==========================================================
+      # 13. NETTOYAGE AVANT COMPILATION
+      # ==========================================================
+      - name: Nettoyer le projet
+        run: |
+          echo "=========================================="
+          echo "          NETTOYAGE DU PROJET"
+          echo "=========================================="
+
+          gradle clean --no-daemon --stacktrace
+
+      # ==========================================================
+      # 14. COMPILATION DEBUG
+      # ==========================================================
+      - name: Compiler Fasso Commerce
+        run: |
+          echo "=========================================="
+          echo "        COMPILATION DE L'APPLICATION"
+          echo "=========================================="
+          echo ""
+          echo "Compilation de :"
+          echo "  :app:assembleDebug"
+          echo ""
+          echo "Patientez..."
+          echo ""
 
           gradle :app:assembleDebug \
             --no-daemon \
-            --stacktrace
+            --stacktrace \
+            --warning-mode all
 
-      - name: Vérifier l'APK
+      # ==========================================================
+      # 15. VERIFICATION DU RESULTAT
+      # ==========================================================
+      - name: Vérifier que l'APK existe
         run: |
-          set -e
+          echo "=========================================="
+          echo "          VERIFICATION DE L'APK"
+          echo "=========================================="
 
-          APK="/tmp/final_fasso_project/app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK non généré."
+            echo ""
+            echo "ERREUR : l'APK n'a pas été généré."
+            echo ""
+            echo "Fichiers disponibles :"
+            find app/build -type f 2>/dev/null || true
+            echo ""
             exit 1
           fi
 
-          echo "===== APK GÉNÉRÉ ====="
-          ls -lh "$APK"
+          echo ""
+          echo "APK trouvé : $APK"
+          echo ""
 
+          echo "Taille de l'APK :"
+          ls -lh "$APK"
+          echo ""
+
+          echo "Type du fichier :"
+          file "$APK"
+          echo ""
+
+          echo "SHA-256 :"
+          sha256sum "$APK"
+          echo ""
+
+          echo "APK DEBUG GENERE AVEC SUCCES."
+
+      # ==========================================================
+      # 16. AFFICHAGE DES FICHIERS DE SORTIE
+      # ==========================================================
+      - name: Afficher les fichiers générés
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "          FICHIERS GENERES"
+          echo "=========================================="
+
+          if [ -d "app/build/outputs" ]; then
+            find app/build/outputs -type f -print
+          else
+            echo "Aucun dossier app/build/outputs."
+          fi
+
+      # ==========================================================
+      # 17. PUBLICATION DE L'APK
+      # ==========================================================
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-ACCUEIL-ADMIN-debug
-          path: /tmp/final_fasso_project/app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # ==========================================================
+      # 18. MESSAGE FINAL
+      # ==========================================================
+      - name: Résultat final
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "       FASSO COMMERCE TERMINE"
+          echo "=========================================="
+          echo ""
+          echo "APK : app-debug.apk"
+          echo "Artefact : Fasso-Commerce-debug"
+          echo ""
+          echo "La compilation est terminée."
+          echo "=========================================="
