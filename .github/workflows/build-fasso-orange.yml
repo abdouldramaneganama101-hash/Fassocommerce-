@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP="Fasso-Commerce-MODELE-ORANGE-REFERENCE.zip"
+          ZIP="Fasso-Commerce-MODELE-ORANGE-REFERENCE-1.zip"
 
           echo "Recherche du fichier : $ZIP"
 
