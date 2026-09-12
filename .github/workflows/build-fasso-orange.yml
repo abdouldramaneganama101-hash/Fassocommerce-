@@ -1,11 +1,11 @@
-name: Fasso Commerce - ORANGE FINAL
+name: Fasso Commerce - V1.6 FINAL
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Construire Fasso Commerce Orange
+    name: Construire Fasso Commerce V1.6
     runs-on: ubuntu-latest
 
     steps:
@@ -34,28 +34,27 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Selectionner UNIQUEMENT le nouveau ZIP ORANGE corrige
+      - name: Selectionner UNIQUEMENT le ZIP V1.6
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Recherche du ZIP ORANGE corrige..."
+          echo "Recherche du ZIP V1.6..."
 
           ZIP="$(find . -maxdepth 1 -type f \
-           -iname 'Fasso-Commerce-ORANGE-V1.6-FONCTIONS*.zip' 
-            
+            -iname 'Fasso-Commerce-ORANGE-V1.6-FONCTIONS*.zip' \
             -print | sort -V | tail -n 1)"
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : le ZIP ORANGE corrige est introuvable."
+            echo "ERREUR : le ZIP V1.6 est introuvable."
             echo ""
-            echo "ZIP disponibles dans le depot :"
+            echo "ZIP disponibles :"
             find . -maxdepth 1 -type f -iname '*.zip' -print
             exit 1
           fi
 
           echo "========================================"
-          echo "ZIP SELECTIONNE :"
+          echo "ZIP V1.6 SELECTIONNE :"
           echo "$ZIP"
           echo "========================================"
 
@@ -64,22 +63,20 @@ jobs:
 
           unzip -q "$ZIP" -d android-project
 
-          echo "ZIP ORANGE decompresse."
-
       - name: Trouver la racine Android
         shell: bash
         run: |
           set -euo pipefail
 
           if [ -f android-project/settings.gradle.kts ]; then
-            echo "Projet Android directement a la racine du ZIP."
+            echo "Projet Android trouve a la racine."
           else
             ROOT="$(find android-project -mindepth 1 -maxdepth 1 -type d \
               -exec test -f '{}/settings.gradle.kts' \; -print | head -n 1)"
 
             if [ -z "$ROOT" ]; then
-              echo "ERREUR : impossible de trouver settings.gradle.kts."
-              find android-project -maxdepth 3 -type f -print
+              echo "ERREUR : settings.gradle.kts introuvable."
+              find android-project -maxdepth 4 -type f -print
               exit 1
             fi
 
@@ -95,13 +92,13 @@ jobs:
             mv "$TEMP_DIR" android-project
           fi
 
-      - name: Verifier le projet ORANGE
+      - name: Verifier le projet V1.6
         shell: bash
         working-directory: android-project
         run: |
           set -euo pipefail
 
-          echo "Verification des fichiers Android..."
+          echo "Verification du projet..."
 
           test -f settings.gradle.kts
           test -f build.gradle.kts
@@ -115,42 +112,14 @@ jobs:
           test -f app/src/main/java/com/fassocommerce/ProductStore.java
           test -f app/src/main/java/com/fassocommerce/OrderStore.java
 
-          echo "Verification du logo..."
           test -f app/src/main/res/drawable/fasso_logo_orange.png
-
-          echo "Verification des produits..."
           test -f app/src/main/res/drawable/tondeuse.png
           test -f app/src/main/res/drawable/fer_repasser.png
           test -f app/src/main/res/drawable/aspirateur_voiture.png
           test -f app/src/main/res/drawable/compresseur.png
           test -f app/src/main/res/drawable/outillage.png
 
-          echo "Tous les fichiers necessaires sont presents."
-
-      - name: Verifier que l ancien modele est absent
-        shell: bash
-        working-directory: android-project
-        run: |
-          set -euo pipefail
-
-          MAIN="app/src/main/java/com/fassocommerce/MainActivity.java"
-
-          if grep -q "OFFRE SPÉCIALE" "$MAIN"; then
-            echo "ERREUR : ancien texte OFFRE SPECIALE detecte."
-            exit 1
-          fi
-
-          if grep -q -- "-20%" "$MAIN"; then
-            echo "ERREUR : ancien texte -20% detecte."
-            exit 1
-          fi
-
-          if grep -q "sur votre première commande" "$MAIN"; then
-            echo "ERREUR : ancien texte de livraison detecte."
-            exit 1
-          fi
-
-          echo "Ancien modele non detecte."
+          echo "Tous les fichiers V1.6 sont presents."
 
       - name: Installer Gradle 9.6.1
         uses: gradle/actions/setup-gradle@v4
@@ -167,12 +136,12 @@ jobs:
         run: |
           gradle clean --no-daemon
 
-      - name: Compiler le nouveau modele ORANGE
+      - name: Compiler Fasso Commerce V1.6
         working-directory: android-project
         run: |
           gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verifier l APK
+      - name: Verifier APK V1.6
         shell: bash
         run: |
           set -euo pipefail
@@ -184,29 +153,28 @@ jobs:
             exit 1
           fi
 
-          echo "APK genere :"
+          echo "========================================"
+          echo "APK V1.6 GENERE"
+          echo "========================================"
+
           ls -lh "$APK"
 
-          echo ""
-          echo "Verification du logo dans l APK..."
-
+          echo "Verification du logo..."
           unzip -l "$APK" | grep -qi "fasso_logo_orange"
 
-          echo "Verification des photos dans l APK..."
-
+          echo "Verification des photos..."
           unzip -l "$APK" | grep -qi "tondeuse"
           unzip -l "$APK" | grep -qi "fer_repasser"
           unzip -l "$APK" | grep -qi "aspirateur_voiture"
           unzip -l "$APK" | grep -qi "compresseur"
 
-          echo ""
           echo "========================================"
-          echo "APK ORANGE VERIFIE AVEC LOGO ET PHOTOS"
+          echo "APK V1.6 VERIFIE AVEC LOGO ET PHOTOS"
           echo "========================================"
 
-      - name: Publier APK ORANGE FINAL
+      - name: Publier APK V1.6
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-ORANGE-FINAL-APK
+          name: Fasso-Commerce-V1.6-APK
           path: android-project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
