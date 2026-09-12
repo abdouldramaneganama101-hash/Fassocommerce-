@@ -1,18 +1,16 @@
-name: Build Fasso Commerce APK
+name: Fasso Commerce - V1.7 FINAL
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
-    name: Construire l APK
+    name: Construire Fasso Commerce V1.7
     runs-on: ubuntu-latest
 
     steps:
-      - name: Recuperer le projet
+
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -35,71 +33,122 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Verifier la structure du projet
+      - name: Selectionner UNIQUEMENT le ZIP V1.7
         shell: bash
         run: |
-          echo "=== RACINE DU DEPOT ==="
-          ls -la
+          set -euo pipefail
 
-          echo "=== VERIFICATION APP ==="
-          if [ ! -d "app" ]; then
-            echo "ERREUR : le dossier app est absent de la racine."
-            echo "Le projet Android doit contenir app/ a la racine."
+          echo "Recherche du ZIP V1.7..."
+
+          ZIP="$(find . -maxdepth 1 -type f \
+            -iname 'Fasso-Commerce-ORANGE-V1.7-ICONE-CORRIGEE*.zip' \
+            -print | sort -V | tail -n 1)"
+
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR : ZIP V1.7 introuvable."
+            echo ""
+            echo "ZIP disponibles :"
+            find . -maxdepth 1 -type f -iname '*.zip' -print
             exit 1
           fi
 
-          if [ ! -f "settings.gradle.kts" ]; then
-            echo "ERREUR : settings.gradle.kts absent."
-            exit 1
+          echo "========================================"
+          echo "ZIP V1.7 SELECTIONNE :"
+          echo "$ZIP"
+          echo "========================================"
+
+          rm -rf android-project
+          mkdir -p android-project
+          unzip -q "$ZIP" -d android-project
+
+      - name: Trouver la racine Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f android-project/settings.gradle.kts ]; then
+            echo "Projet Android trouve."
+          else
+            ROOT="$(find android-project -mindepth 1 -maxdepth 1 -type d \
+              -exec test -f '{}/settings.gradle.kts' \; -print | head -n 1)"
+
+            if [ -z "$ROOT" ]; then
+              echo "ERREUR : projet Android introuvable."
+              find android-project -maxdepth 4 -type f -print
+              exit 1
+            fi
+
+            TEMP_DIR="android-project-temp"
+            rm -rf "$TEMP_DIR"
+            mkdir -p "$TEMP_DIR"
+
+            cp -a "$ROOT"/. "$TEMP_DIR"/
+            rm -rf android-project
+            mv "$TEMP_DIR" android-project
           fi
 
-          if [ ! -f "build.gradle.kts" ]; then
-            echo "ERREUR : build.gradle.kts absent."
-            exit 1
-          fi
+      - name: Verifier le projet V1.7
+        shell: bash
+        working-directory: android-project
+        run: |
+          set -euo pipefail
 
-          if [ ! -f "app/build.gradle.kts" ]; then
-            echo "ERREUR : app/build.gradle.kts absent."
-            exit 1
-          fi
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f gradle.properties
+          test -f app/build.gradle.kts
+          test -f app/src/main/AndroidManifest.xml
 
-          if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
-            echo "ERREUR : AndroidManifest.xml absent."
-            exit 1
-          fi
+          test -f app/src/main/java/com/fassocommerce/MainActivity.java
+          test -f app/src/main/java/com/fassocommerce/AdminActivity.java
+          test -f app/src/main/java/com/fassocommerce/ProductStore.java
+          test -f app/src/main/java/com/fassocommerce/OrderStore.java
 
-          echo "Projet Android correctement detecte."
+          echo "========================================"
+          echo "PROJET V1.7 VERIFIE"
+          echo "========================================"
 
       - name: Installer Gradle 9.6.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
 
-      - name: Verifier Gradle
-        run: gradle --version
+      - name: Afficher les versions
+        run: |
+          java -version
+          gradle --version
 
-      - name: Nettoyer le projet
-        run: gradle clean --no-daemon
+      - name: Nettoyer
+        working-directory: android-project
+        run: |
+          gradle clean --no-daemon
 
-      - name: Construire APK Debug
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Compiler APK V1.7
+        working-directory: android-project
+        run: |
+          gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verifier APK
         shell: bash
         run: |
-          echo "=== APK GENERE ==="
-          find app/build/outputs/apk -type f -name "*.apk" -print
+          set -euo pipefail
 
-          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            echo "ERREUR : APK non trouve."
+          APK="android-project/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -s "$APK" ]; then
+            echo "ERREUR : APK introuvable ou vide."
             exit 1
           fi
 
-          echo "SUCCES : APK trouve."
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          echo "========================================"
+          echo "APK V1.7 GENERE AVEC SUCCES"
+          echo "========================================"
 
-      - name: Telecharger APK
+          ls -lh "$APK"
+
+      - name: Publier APK V1.7
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-V1.7-APK
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
