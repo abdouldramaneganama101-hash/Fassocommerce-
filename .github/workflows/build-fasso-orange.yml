@@ -42,7 +42,8 @@ jobs:
           echo "Recherche du ZIP ORANGE corrige..."
 
           ZIP="$(find . -maxdepth 1 -type f \
-            -iname 'Fasso-Commerce-ORANGE-CORRIGE-COMPILATION*.zip' \
+           -iname 'Fasso-Commerce-ORANGE-V1.6-FONCTIONS*.zip' 
+            
             -print | sort -V | tail -n 1)"
 
           if [ -z "$ZIP" ]; then
