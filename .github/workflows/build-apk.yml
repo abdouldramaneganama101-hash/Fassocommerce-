@@ -1,4 +1,4 @@
-name: Build Fasso Commerce
+name: Build Fasso Commerce V2.3
 
 on:
   workflow_dispatch:
@@ -21,44 +21,35 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Vérifier Java
-        run: java -version
-
       - name: Préparer Android SDK
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Vérifier les fichiers du projet
-        run: |
-          echo "Contenu du dépôt :"
-          ls -la
-          echo "Contenu de app :"
-          ls -la app || true
+      - name: Installer Gradle 9.6.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
 
-      - name: Donner les droits à Gradle
+      - name: Vérifier le projet
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          fi
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          echo "Projet Fasso Commerce V2.3 détecté."
+          gradle --version
 
       - name: Compiler l'APK
-        run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew clean :app:assembleDebug --stacktrace
-          else
-            echo "ERREUR : gradlew introuvable."
-            exit 1
-          fi
+        run: gradle clean :app:assembleDebug --no-daemon --stacktrace
 
       - name: Vérifier l'APK
         run: |
-          echo "APK généré :"
-          find app/build/outputs/apk -type f -name "*.apk" -print
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.2-APK
-          path: app/build/outputs/apk/**/*.apk
+          name: Fasso-Commerce-V2.3-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
