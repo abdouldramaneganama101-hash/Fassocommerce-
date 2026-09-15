@@ -1,17 +1,18 @@
-name: Build Fasso Commerce V2.1
+name: Build Fasso Commerce
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Télécharger le projet
+      - name: Télécharger le dépôt
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -20,135 +21,44 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Vérifier Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+      - name: Vérifier Java
+        run: java -version
 
-          if [ -z "$ANDROID_HOME" ]; then
-            export ANDROID_HOME="$ANDROID_SDK_ROOT"
+      - name: Préparer Android SDK
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Vérifier les fichiers du projet
+        run: |
+          echo "Contenu du dépôt :"
+          ls -la
+          echo "Contenu de app :"
+          ls -la app || true
+
+      - name: Donner les droits à Gradle
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
           fi
 
-          if [ -z "$ANDROID_HOME" ]; then
-            echo "ERREUR : Android SDK introuvable."
-            exit 1
-          fi
-
-          echo "SDK trouvé : $ANDROID_HOME"
-          find "$ANDROID_HOME" -maxdepth 3 -type f -name sdkmanager | head -n 5
-
-      - name: Installer les composants Android nécessaires
+      - name: Compiler l'APK
         run: |
-          SDKMANAGER=$(find "$ANDROID_HOME" -type f -name sdkmanager | head -n 1)
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERREUR : sdkmanager introuvable."
-            exit 1
-          fi
-
-          echo "sdkmanager trouvé : $SDKMANAGER"
-
-          yes | "$SDKMANAGER" --licenses || true
-
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
-
-      - name: Installer Gradle 9.6.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.1'
-
-      - name: Trouver le ZIP Fasso Commerce V2.1
-        run: |
-          echo "Recherche du ZIP..."
-
-          ZIP=$(find . -type f \
-            -name 'Fasso-Commerce-ORANGE-V2.1-PAIEMENT-ORANGE*.zip' \
-            | head -n 1)
-
-          if [ -z "$ZIP" ]; then
-            echo "ERREUR : ZIP V2.1 introuvable."
-            echo "Fichiers trouvés :"
-            find . -type f | sort
-            exit 1
-          fi
-
-          echo "ZIP trouvé : $ZIP"
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-
-      - name: Décompresser le projet
-        run: |
-          rm -rf android-project
-          mkdir -p android-project
-
-          unzip -q "$ZIP" -d android-project
-
-          echo "Projet décompressé."
-
-      - name: Détecter le dossier Android
-        run: |
-          if [ -f "android-project/settings.gradle.kts" ]; then
-            PROJECT_DIR="android-project"
-          elif [ -f "android-project/settings.gradle" ]; then
-            PROJECT_DIR="android-project"
+          if [ -f "./gradlew" ]; then
+            ./gradlew clean :app:assembleDebug --stacktrace
           else
-            SETTINGS=$(find android-project -type f \
-              \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
-              | head -n 1)
-
-            if [ -z "$SETTINGS" ]; then
-              echo "ERREUR : settings.gradle.kts introuvable."
-              find android-project -maxdepth 5 -type f | sort
-              exit 1
-            fi
-
-            PROJECT_DIR=$(dirname "$SETTINGS")
-          fi
-
-          echo "Projet Android : $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Vérifier le projet
-        run: |
-          test -f "$PROJECT_DIR/build.gradle.kts" || {
-            echo "ERREUR : build.gradle.kts introuvable."
-            exit 1
-          }
-
-          test -f "$PROJECT_DIR/app/build.gradle.kts" || {
-            echo "ERREUR : app/build.gradle.kts introuvable."
-            exit 1
-          }
-
-          echo "Projet correctement détecté."
-
-      - name: Compiler Fasso Commerce
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          gradle --version
-          gradle clean
-          gradle :app:assembleDebug --stacktrace
-
-      - name: Vérifier APK
-        run: |
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK non généré."
-            find "$PROJECT_DIR/app/build" -type f | sort || true
+            echo "ERREUR : gradlew introuvable."
             exit 1
           fi
 
-          echo "================================"
-          echo "APK GÉNÉRÉ AVEC SUCCÈS"
-          echo "================================"
-          ls -lh "$APK"
+      - name: Vérifier l'APK
+        run: |
+          echo "APK généré :"
+          find app/build/outputs/apk -type f -name "*.apk" -print
 
-      - name: Publier APK
+      - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.1-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-V2.2-APK
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
