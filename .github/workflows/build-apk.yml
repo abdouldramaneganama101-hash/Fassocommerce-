@@ -1,18 +1,17 @@
-name: Build Fasso Commerce V2.0
+name: Build Fasso Commerce V2.1
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Télécharger le dépôt
+      - name: Télécharger le projet
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -24,92 +23,109 @@ jobs:
       - name: Installer Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Installer les composants Android
+      - name: Installer SDK Android 36
         run: |
           yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-36"
+          sdkmanager "build-tools;36.0.0"
 
       - name: Installer Gradle 9.6.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.1'
 
-      - name: Vérifier le ZIP V2.0
+      - name: Trouver le ZIP Fasso Commerce V2.1
         run: |
-          echo "===== RECHERCHE DU PROJET V2.0 ====="
-          find . -type f -name 'Fasso-Commerce-ORANGE-V2.0-GESTION-PRODUITS*.zip'
+          echo "Fichiers disponibles :"
+          find . -maxdepth 3 -type f | sort
 
-      - name: Préparer le projet Android
-        run: |
-          ZIP=$(find . -type f -name 'Fasso-Commerce-ORANGE-V2.0-GESTION-PRODUITS*.zip' | head -n 1)
+          ZIP=$(find . -type f \
+            -name 'Fasso-Commerce-ORANGE-V2.1-PAIEMENT-ORANGE*.zip' \
+            | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : ZIP V2.0 introuvable."
+            echo "ERREUR : ZIP V2.1 introuvable."
             exit 1
           fi
 
           echo "ZIP trouvé : $ZIP"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 
+      - name: Décompresser le projet
+        run: |
           rm -rf android-project
-          mkdir android-project
+          mkdir -p android-project
 
           unzip -q "$ZIP" -d android-project
 
-          echo "===== CONTENU DU PROJET ====="
-          find android-project -maxdepth 3 -type f | sort
+          echo "Contenu après décompression :"
+          find android-project -maxdepth 4 -type f | sort
 
-      - name: Trouver la racine Android
+      - name: Détecter le vrai dossier Android
         run: |
+          PROJECT_DIR=""
+
           if [ -f "android-project/settings.gradle.kts" ]; then
-            echo "Projet trouvé à la racine du ZIP."
-          elif [ -f "android-project/Fasso-Commerce/settings.gradle.kts" ]; then
-            echo "Projet trouvé dans android-project/Fasso-Commerce."
-            mv android-project/Fasso-Commerce/* android-project/
-            rm -rf android-project/Fasso-Commerce
+            PROJECT_DIR="android-project"
+          elif [ -f "android-project/settings.gradle" ]; then
+            PROJECT_DIR="android-project"
           else
-            echo "Recherche automatique du settings.gradle.kts..."
-            SETTINGS=$(find android-project -name settings.gradle.kts -type f | head -n 1)
+            SETTINGS=$(find android-project -type f \
+              \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+              | head -n 1)
 
             if [ -z "$SETTINGS" ]; then
               echo "ERREUR : settings.gradle.kts introuvable."
               exit 1
             fi
 
-            ROOT=$(dirname "$SETTINGS")
-
-            if [ "$ROOT" != "android-project" ]; then
-              cp -r "$ROOT"/. android-project/
-            fi
+            PROJECT_DIR=$(dirname "$SETTINGS")
           fi
 
-          echo "===== RACINE FINALE ====="
-          ls -la android-project
+          echo "Projet Android détecté : $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Vérifier la structure Android
+      - name: Vérifier le projet
         run: |
-          test -f android-project/settings.gradle.kts
-          test -f android-project/build.gradle.kts
-          test -f android-project/app/build.gradle.kts
+          echo "Dossier projet : $PROJECT_DIR"
+          echo "build.gradle.kts :"
+          test -f "$PROJECT_DIR/build.gradle.kts" || {
+            echo "ERREUR : build.gradle.kts introuvable."
+            exit 1
+          }
 
-          echo "Structure Android OK."
+          echo "app/build.gradle.kts :"
+          test -f "$PROJECT_DIR/app/build.gradle.kts" || {
+            echo "ERREUR : app/build.gradle.kts introuvable."
+            exit 1
+          }
 
-      - name: Compiler l'APK V2.0
-        working-directory: android-project
+          echo "Projet vérifié."
+
+      - name: Compiler Fasso Commerce
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           gradle --version
           gradle clean
           gradle :app:assembleDebug --stacktrace
 
-      - name: Vérifier l'APK
+      - name: Vérifier APK
         run: |
-          echo "===== APK GÉNÉRÉ ====="
-          find android-project/app/build/outputs/apk -type f -name "*.apk" -print
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
-          test -f android-project/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "$APK" ]; then
+            echo "ERREUR : APK non généré."
+            find "$PROJECT_DIR/app/build" -type f | sort || true
+            exit 1
+          fi
 
-      - name: Publier l'APK
+          echo "APK généré avec succès : $APK"
+          ls -lh "$APK"
+
+      - name: Publier APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.0-APK
-          path: android-project/app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-V2.1-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
