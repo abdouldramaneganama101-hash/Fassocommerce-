@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le code
+      - name: Récupérer le projet
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -22,50 +22,71 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Vérifier le projet Android
+      - name: Vérifier la structure du projet
         shell: bash
         run: |
           set -e
 
-          echo "=== CONTENU DU DEPOT ==="
+          echo "===== STRUCTURE DU PROJET ====="
           ls -la
 
-          echo "=== VERIFICATION ==="
+          echo "===== VERIFICATION ANDROID ====="
 
-          test -f settings.gradle.kts || test -f settings.gradle
-          test -f app/build.gradle.kts || test -f app/build.gradle
-          test -f app/src/main/AndroidManifest.xml
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            echo "ERREUR : settings.gradle(.kts) introuvable."
+            exit 1
+          fi
 
-          echo "Projet Android trouvé."
+          if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
+            echo "ERREUR : app/build.gradle(.kts) introuvable."
+            exit 1
+          fi
 
-      - name: Installer Android SDK
-        uses: android-actions/setup-android@v3
+          if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
+            echo "ERREUR : AndroidManifest.xml introuvable."
+            exit 1
+          fi
 
-      - name: Installer SDK Android
-        shell: bash
-        run: |
-          set -e
+          if [ ! -f "./gradlew" ]; then
+            echo "ERREUR : Gradle Wrapper gradlew introuvable."
+            exit 1
+          fi
 
-          yes | sdkmanager --licenses >/dev/null || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          echo "Projet Android correctement détecté."
 
       - name: Préparer Gradle Wrapper
         shell: bash
         run: |
           set -e
+          chmod +x ./gradlew
+          ./gradlew --version
 
-          if [ ! -f "./gradlew" ]; then
-            echo "ERREUR : gradlew est absent."
-            echo "Le Gradle Wrapper doit être présent dans le projet."
+      - name: Vérifier Android SDK déjà disponible
+        shell: bash
+        run: |
+          set -e
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
+            echo "ERREUR : Android SDK introuvable sur le runner."
             exit 1
           fi
 
-          chmod +x ./gradlew
-          ./gradlew --version
+          if [ -n "$ANDROID_HOME" ]; then
+            SDK="$ANDROID_HOME"
+          else
+            SDK="$ANDROID_SDK_ROOT"
+          fi
+
+          echo "SDK utilisé : $SDK"
+
+          echo "===== PLATEFORMES ANDROID DISPONIBLES ====="
+          ls -la "$SDK/platforms" 2>/dev/null || true
+
+          echo "===== BUILD TOOLS DISPONIBLES ====="
+          ls -la "$SDK/build-tools" 2>/dev/null || true
 
       - name: Nettoyer le projet
         shell: bash
@@ -77,7 +98,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+          ./gradlew :app:assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Vérifier l'APK
         shell: bash
@@ -86,14 +110,19 @@ jobs:
 
           APK="app/build/outputs/apk/debug/app-debug.apk"
 
-          if [ ! -s "$APK" ]; then
-            echo "ERREUR : app-debug.apk n'a pas été généré."
+          if [ ! -f "$APK" ]; then
+            echo "ERREUR : APK introuvable."
             exit 1
           fi
 
-          echo "================================"
-          echo "APK FASSO COMMERCE GENERE"
-          echo "================================"
+          if [ ! -s "$APK" ]; then
+            echo "ERREUR : APK vide."
+            exit 1
+          fi
+
+          echo "======================================"
+          echo " FASSO COMMERCE APK GENERE AVEC SUCCES"
+          echo "======================================"
 
           ls -lh "$APK"
 
