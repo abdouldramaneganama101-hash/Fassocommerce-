@@ -1,43 +1,106 @@
-
 name: Build Fasso Commerce APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Compile Android APK
+    name: Compiler Fasso Commerce
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get source code
+      - name: Récupérer le code
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
+          cache: gradle
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.6.1"
+      - name: Vérifier le projet Android
+        shell: bash
+        run: |
+          set -e
 
-      - name: Compile debug APK
-        run: gradle --no-daemon clean :app:assembleDebug
+          echo "=== CONTENU DU DEPOT ==="
+          ls -la
 
-      - name: Upload APK
+          echo "=== VERIFICATION ==="
+
+          test -f settings.gradle.kts || test -f settings.gradle
+          test -f app/build.gradle.kts || test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+
+          echo "Projet Android trouvé."
+
+      - name: Installer Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Installer SDK Android
+        shell: bash
+        run: |
+          set -e
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Préparer Gradle Wrapper
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f "./gradlew" ]; then
+            echo "ERREUR : gradlew est absent."
+            echo "Le Gradle Wrapper doit être présent dans le projet."
+            exit 1
+          fi
+
+          chmod +x ./gradlew
+          ./gradlew --version
+
+      - name: Nettoyer le projet
+        shell: bash
+        run: |
+          set -e
+          ./gradlew clean --no-daemon
+
+      - name: Compiler Fasso Commerce
+        shell: bash
+        run: |
+          set -e
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Vérifier l'APK
+        shell: bash
+        run: |
+          set -e
+
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -s "$APK" ]; then
+            echo "ERREUR : app-debug.apk n'a pas été généré."
+            exit 1
+          fi
+
+          echo "================================"
+          echo "APK FASSO COMMERCE GENERE"
+          echo "================================"
+
+          ls -lh "$APK"
+
+      - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
           name: Fasso-Commerce-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
+          retention-days: 7
