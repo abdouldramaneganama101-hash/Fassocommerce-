@@ -1,18 +1,22 @@
-name: Build Fasso Commerce APK
+
+name: Build Fasso Commerce V2.4
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Compiler Fasso Commerce
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le projet
+      - name: Télécharger le dépôt
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -20,116 +24,55 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Vérifier la structure du projet
+      - name: Installer Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.1'
+
+      - name: Préparer Android SDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      - name: Repérer le projet Android
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "===== STRUCTURE DU PROJET ====="
-          ls -la
-
-          echo "===== VERIFICATION ANDROID ====="
-
-          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
-            echo "ERREUR : settings.gradle(.kts) introuvable."
-            exit 1
-          fi
-
-          if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
-            echo "ERREUR : app/build.gradle(.kts) introuvable."
-            exit 1
-          fi
-
-          if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
-            echo "ERREUR : AndroidManifest.xml introuvable."
-            exit 1
-          fi
-
-          if [ ! -f "./gradlew" ]; then
-            echo "ERREUR : Gradle Wrapper gradlew introuvable."
-            exit 1
-          fi
-
-          echo "Projet Android correctement détecté."
-
-      - name: Préparer Gradle Wrapper
-        shell: bash
-        run: |
-          set -e
-          chmod +x ./gradlew
-          ./gradlew --version
-
-      - name: Vérifier Android SDK déjà disponible
-        shell: bash
-        run: |
-          set -e
-
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          if [ -z "$ANDROID_HOME" ] && [ -z "$ANDROID_SDK_ROOT" ]; then
-            echo "ERREUR : Android SDK introuvable sur le runner."
-            exit 1
-          fi
-
-          if [ -n "$ANDROID_HOME" ]; then
-            SDK="$ANDROID_HOME"
+          if [ -f "settings.gradle.kts" ] && [ -f "app/build.gradle.kts" ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          elif [ -f "fasso/settings.gradle.kts" ] && [ -f "fasso/app/build.gradle.kts" ]; then
+            echo "PROJECT_DIR=fasso" >> "$GITHUB_ENV"
           else
-            SDK="$ANDROID_SDK_ROOT"
-          fi
-
-          echo "SDK utilisé : $SDK"
-
-          echo "===== PLATEFORMES ANDROID DISPONIBLES ====="
-          ls -la "$SDK/platforms" 2>/dev/null || true
-
-          echo "===== BUILD TOOLS DISPONIBLES ====="
-          ls -la "$SDK/build-tools" 2>/dev/null || true
-
-      - name: Nettoyer le projet
-        shell: bash
-        run: |
-          set -e
-          ./gradlew clean --no-daemon
-
-      - name: Compiler Fasso Commerce
-        shell: bash
-        run: |
-          set -e
-
-          ./gradlew :app:assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      - name: Vérifier l'APK
-        shell: bash
-        run: |
-          set -e
-
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK introuvable."
+            echo "ERREUR : fichiers Gradle introuvables."
+            echo "Vérifie que settings.gradle.kts et app/build.gradle.kts sont présents."
+            find . -maxdepth 4 \( -name settings.gradle.kts -o -name build.gradle.kts \) -print
             exit 1
           fi
 
-          if [ ! -s "$APK" ]; then
-            echo "ERREUR : APK vide."
-            exit 1
-          fi
+      - name: Compiler l'APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon clean :app:assembleDebug --stacktrace
 
-          echo "======================================"
-          echo " FASSO COMMERCE APK GENERE AVEC SUCCES"
-          echo "======================================"
-
+      - name: Vérifier l'APK généré
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
           ls -lh "$APK"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-V2.4-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          
