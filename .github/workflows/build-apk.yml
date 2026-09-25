@@ -1,12 +1,12 @@
-name: Fasso Commerce - Build APK
+name: Fasso Commerce - Choisir et compiler un ZIP
 
 on:
   workflow_dispatch:
     inputs:
       project_zip:
-        description: "Nom exact du ZIP du projet à compiler"
+        description: "Nom exact du ZIP à compiler (ou AUTO)"
         required: true
-        default: "Fasso-Commerce-V2.6-COMMANDES-MESSAGERIE-PAIEMENT.zip"
+        default: "AUTO"
         type: string
 
 permissions:
@@ -39,28 +39,66 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Vérifier et décompresser le ZIP choisi
+      - name: Afficher les ZIP disponibles
+        shell: bash
+        run: |
+          echo "===== ZIP DISPONIBLES DANS LE DEPOT ====="
+          find . -maxdepth 2 -type f -iname "*.zip" -print | sort
+          echo "=========================================="
+
+      - name: Choisir le ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP="${{ github.event.inputs.project_zip }}"
+          CHOIX="${{ github.event.inputs.project_zip }}"
 
-          echo "ZIP sélectionné : $ZIP"
+          if [ "$CHOIX" = "AUTO" ]; then
+            ZIP_COUNT=$(find . -maxdepth 1 -type f -iname "*.zip" | wc -l)
+
+            if [ "$ZIP_COUNT" -eq 0 ]; then
+              echo "ERREUR : aucun ZIP n'est présent à la racine du dépôt."
+              exit 1
+            fi
+
+            if [ "$ZIP_COUNT" -gt 1 ]; then
+              echo "PLUSIEURS ZIP SONT PRÉSENTS."
+              echo "Indique le nom exact du ZIP dans Run workflow."
+              find . -maxdepth 1 -type f -iname "*.zip" -printf '%f\n' | sort
+              exit 1
+            fi
+
+            ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
+          else
+            ZIP="./$CHOIX"
+          fi
 
           if [ ! -f "$ZIP" ]; then
-            echo "ERREUR : ZIP introuvable dans le dépôt."
-            echo "ZIP disponibles :"
-            find . -maxdepth 2 -type f -name "*.zip" -print
+            echo ""
+            echo "ERREUR : le ZIP choisi n'existe pas : $CHOIX"
+            echo ""
+            echo "ZIP réellement disponibles :"
+            find . -maxdepth 2 -type f -iname "*.zip" -printf '%p\n' | sort
             exit 1
           fi
+
+          echo "ZIP CHOISI : $ZIP"
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Décompresser le ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
 
           rm -rf project
           mkdir -p project
 
-          unzip -q "$ZIP" -d project
+          unzip -q "$ZIP_PATH" -d project
 
-      - name: Trouver le projet Android
+          echo "Projet extrait."
+          find project -maxdepth 3 -type f | head -100
+
+      - name: Trouver automatiquement le projet Android
         shell: bash
         run: |
           set -euo pipefail
@@ -72,21 +110,23 @@ jobs:
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$SETTINGS")"
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
           if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
             echo "ERREUR : app/build.gradle.kts introuvable."
             exit 1
           fi
 
-          echo "Projet trouvé : $PROJECT_DIR"
+          echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Compiler l'APK
         shell: bash
         run: |
           set -euo pipefail
+
           cd "$PROJECT_DIR"
+
           gradle --no-daemon clean :app:assembleDebug --stacktrace
 
       - name: Vérifier l'APK
@@ -101,11 +141,12 @@ jobs:
             exit 1
           fi
 
+          echo "APK trouvé :"
           ls -lh "$APK"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.6-APK
+          name: Fasso-Commerce-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          if-no-files-found: error 
