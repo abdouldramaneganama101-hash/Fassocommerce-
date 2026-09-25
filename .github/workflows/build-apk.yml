@@ -1,4 +1,4 @@
-name: Fasso Commerce - Build APK
+name: Construire Fasso Commerce
 
 on:
   workflow_dispatch:
@@ -6,120 +6,267 @@ on:
       project_zip:
         description: "Nom exact du ZIP à compiler"
         required: true
-        default: "Fasso-Commerce-V2.7-SECURE-COMMANDES-LIVRAISON-PAIEMENT.zip"
-        type: string
-
-permissions:
-  contents: read
+        default: "Fasso-Commerce-V2.7-SECURE-COMMANDES-LIVRAISON-PAIEMENT-1.zip"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ---------------------------------------------------------
+      # 1. Récupérer les fichiers du dépôt
+      # ---------------------------------------------------------
       - name: Télécharger le dépôt
         uses: actions/checkout@v4
 
+      # ---------------------------------------------------------
+      # 2. Vérifier le ZIP choisi
+      # ---------------------------------------------------------
+      - name: Vérifier le ZIP choisi
+        shell: bash
+        run: |
+          set -e
+
+          ZIP="${{ inputs.project_zip }}"
+
+          echo "=========================================="
+          echo "ZIP demandé : $ZIP"
+          echo "=========================================="
+
+          if [ ! -f "$ZIP" ]; then
+            echo ""
+            echo "❌ ERREUR : le ZIP choisi est introuvable."
+            echo ""
+            echo "📦 ZIP disponibles dans le dépôt :"
+            find . -maxdepth 1 -type f -iname "*.zip" -printf '%f\n' | sort
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ ZIP trouvé : $ZIP"
+
+          echo ""
+          echo "🔎 Vérification de l'archive..."
+          unzip -t "$ZIP"
+
+          echo ""
+          echo "✅ ZIP valide."
+
+      # ---------------------------------------------------------
+      # 3. Installer Java 17
+      # ---------------------------------------------------------
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+      # ---------------------------------------------------------
+      # 4. Installer Android SDK
+      # ---------------------------------------------------------
+      - name: Installer Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Installer les composants Android
+        shell: bash
+        run: |
+          set -e
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+      # ---------------------------------------------------------
+      # 5. Installer Gradle 9.6.1
+      # ---------------------------------------------------------
       - name: Installer Gradle 9.6.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.1"
 
-      - name: Installer Android SDK
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
-
-      - name: Vérifier le ZIP choisi
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ZIP="${{ github.event.inputs.project_zip }}"
-
-          echo "ZIP demandé : $ZIP"
-
-          if [ ! -f "$ZIP" ]; then
-            echo "ERREUR : ce ZIP n'existe pas dans le dépôt."
-            echo ""
-            echo "ZIP disponibles :"
-            find . -maxdepth 2 -type f -iname "*.zip" -printf '%p\n' | sort
-            exit 1
-          fi
-
-          echo "ZIP trouvé : $ZIP"
-          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
-
+      # ---------------------------------------------------------
+      # 6. Extraire le ZIP
+      # ---------------------------------------------------------
       - name: Extraire le projet
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
           rm -rf project
           mkdir -p project
 
-          unzip -q "$ZIP_PATH" -d project
+          unzip -q "${{ inputs.project_zip }}" -d project
 
-          echo "Projet extrait correctement."
+          echo "=========================================="
+          echo "📂 Contenu extrait"
+          echo "=========================================="
 
+          find project -maxdepth 3 -type f | sort | head -200
+
+      # ---------------------------------------------------------
+      # 7. Trouver automatiquement le projet Android
+      # ---------------------------------------------------------
       - name: Trouver automatiquement le projet Android
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          SETTINGS=$(find project -type f -name "settings.gradle.kts" -print -quit)
+          ROOT=""
 
-          if [ -z "$SETTINGS" ]; then
-            echo "ERREUR : settings.gradle.kts introuvable."
+          while IFS= read -r SETTINGS; do
+            DIR="$(dirname "$SETTINGS")"
+
+            if [ -f "$DIR/app/build.gradle.kts" ] || \
+               [ -f "$DIR/app/build.gradle" ]; then
+              ROOT="$DIR"
+              break
+            fi
+          done < <(find project -type f \( \
+            -name "settings.gradle.kts" -o \
+            -name "settings.gradle" \
+          \) -print)
+
+          if [ -z "$ROOT" ]; then
+            echo "❌ Aucun projet Android valide trouvé."
+            echo ""
+            echo "Recherche effectuée :"
+            find project -type f \( \
+              -name "settings.gradle.kts" -o \
+              -name "settings.gradle" -o \
+              -name "build.gradle.kts" -o \
+              -name "build.gradle" \
+            \) -print | sort
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$SETTINGS")"
+          ROOT="$(cd "$ROOT" && pwd)"
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERREUR : app/build.gradle.kts introuvable."
-            exit 1
-          fi
+          echo "=========================================="
+          echo "✅ Projet Android trouvé"
+          echo "=========================================="
+          echo "$ROOT"
 
-          echo "Projet Android trouvé : $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
 
-      - name: Compiler l'APK
+      # ---------------------------------------------------------
+      # 8. Vérifier les fichiers essentiels
+      # ---------------------------------------------------------
+      - name: Vérifier la structure Android
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          cd "$PROJECT_DIR"
+          echo "Projet : $ANDROID_PROJECT_ROOT"
+          echo ""
 
-          gradle --no-daemon clean :app:assembleDebug --stacktrace
+          if [ ! -f "$ANDROID_PROJECT_ROOT/settings.gradle.kts" ] && \
+             [ ! -f "$ANDROID_PROJECT_ROOT/settings.gradle" ]; then
+            echo "❌ settings.gradle introuvable."
+            exit 1
+          fi
 
+          if [ ! -f "$ANDROID_PROJECT_ROOT/app/build.gradle.kts" ] && \
+             [ ! -f "$ANDROID_PROJECT_ROOT/app/build.gradle" ]; then
+            echo "❌ app/build.gradle introuvable."
+            exit 1
+          fi
+
+          if [ ! -d "$ANDROID_PROJECT_ROOT/app/src" ]; then
+            echo "❌ app/src introuvable."
+            exit 1
+          fi
+
+          echo "✅ Structure Android correcte."
+
+      # ---------------------------------------------------------
+      # 9. Afficher les versions utilisées
+      # ---------------------------------------------------------
+      - name: Vérifier Java et Gradle
+        shell: bash
+        run: |
+          java -version
+          echo ""
+          gradle --version
+
+      # ---------------------------------------------------------
+      # 10. Nettoyer et compiler l'APK
+      # ---------------------------------------------------------
+      - name: Compiler l'APK
+        shell: bash
+        working-directory: ${{ env.ANDROID_PROJECT_ROOT }}
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "🧹 Nettoyage"
+          echo "=========================================="
+
+          gradle --no-daemon clean
+
+          echo "=========================================="
+          echo "🔨 Compilation de l'APK"
+          echo "=========================================="
+
+          gradle \
+            --no-daemon \
+            :app:assembleDebug \
+            --stacktrace
+
+      # ---------------------------------------------------------
+      # 11. Vérifier que l'APK existe
+      # ---------------------------------------------------------
       - name: Vérifier l'APK
         shell: bash
         run: |
-          set -euo pipefail
+          set -e
 
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          APK="$ANDROID_PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
 
-          if [ ! -s "$APK" ]; then
-            echo "ERREUR : APK non généré."
+          echo "APK attendu :"
+          echo "$APK"
+          echo ""
+
+          if [ ! -f "$APK" ]; then
+            echo "❌ APK introuvable."
+            echo ""
+            echo "Fichiers APK trouvés :"
+            find "$ANDROID_PROJECT_ROOT/app/build" \
+              -type f \
+              -name "*.apk" \
+              -print 2>/dev/null || true
             exit 1
           fi
 
-          echo "APK généré :"
+          echo "✅ APK généré avec succès."
+
+          echo ""
+          echo "📦 Taille de l'APK :"
           ls -lh "$APK"
 
+      # ---------------------------------------------------------
+      # 12. Vérification interne de l'APK
+      # ---------------------------------------------------------
+      - name: Vérifier l'intégrité de l'APK
+        shell: bash
+        run: |
+          set -e
+
+          APK="$ANDROID_PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+
+          unzip -t "$APK" >/dev/null
+
+          echo "✅ Intégrité de l'APK vérifiée."
+
+      # ---------------------------------------------------------
+      # 13. Publier l'APK
+      # ---------------------------------------------------------
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.7-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          name: Fasso-Commerce-APK
+          path: ${{ env.ANDROID_PROJECT_ROOT }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
