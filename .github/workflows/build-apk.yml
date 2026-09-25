@@ -6,7 +6,7 @@ on:
       project_zip:
         description: "Nom exact du ZIP du projet à compiler"
         required: true
-        default: "Fasso-Commerce-V2.5-SECURE-ALIBABA-STYLE.zip"
+        default: "Fasso-Commerce-V2.6-COMMANDES-MESSAGERIE-PAIEMENT.zip"
         type: string
 
 permissions:
@@ -49,8 +49,7 @@ jobs:
           echo "ZIP sélectionné : $ZIP"
 
           if [ ! -f "$ZIP" ]; then
-            echo "ERREUR : le fichier ZIP n'existe pas dans le dépôt."
-            echo
+            echo "ERREUR : ZIP introuvable dans le dépôt."
             echo "ZIP disponibles :"
             find . -maxdepth 2 -type f -name "*.zip" -print
             exit 1
@@ -60,9 +59,6 @@ jobs:
           mkdir -p project
 
           unzip -q "$ZIP" -d project
-
-          echo "Contenu extrait :"
-          find project -maxdepth 3 -type f | head -100
 
       - name: Trouver le projet Android
         shell: bash
@@ -83,16 +79,14 @@ jobs:
             exit 1
           fi
 
-          echo "Projet Android trouvé : $PROJECT_DIR"
+          echo "Projet trouvé : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Compiler l'APK
         shell: bash
         run: |
           set -euo pipefail
-
           cd "$PROJECT_DIR"
-
           gradle --no-daemon clean :app:assembleDebug --stacktrace
 
       - name: Vérifier l'APK
@@ -107,12 +101,11 @@ jobs:
             exit 1
           fi
 
-          echo "APK généré avec succès :"
           ls -lh "$APK"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-APK
+          name: Fasso-Commerce-V2.6-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
