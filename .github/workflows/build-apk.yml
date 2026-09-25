@@ -1,12 +1,13 @@
-
-name: Build Fasso Commerce V2.4
+name: Fasso Commerce - Build APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
+    inputs:
+      project_zip:
+        description: "Nom exact du ZIP du projet à compiler"
+        required: true
+        default: "Fasso-Commerce-V2.5-SECURE-ALIBABA-STYLE.zip"
+        type: string
 
 permissions:
   contents: read
@@ -23,14 +24,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Installer Gradle
+      - name: Installer Gradle 9.6.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.6.1'
+          gradle-version: "9.6.1"
 
-      - name: Préparer Android SDK
+      - name: Installer Android SDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
@@ -38,41 +39,80 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Repérer le projet Android
+      - name: Vérifier et décompresser le ZIP choisi
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -f "settings.gradle.kts" ] && [ -f "app/build.gradle.kts" ]; then
-            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
-          elif [ -f "fasso/settings.gradle.kts" ] && [ -f "fasso/app/build.gradle.kts" ]; then
-            echo "PROJECT_DIR=fasso" >> "$GITHUB_ENV"
-          else
-            echo "ERREUR : fichiers Gradle introuvables."
-            echo "Vérifie que settings.gradle.kts et app/build.gradle.kts sont présents."
-            find . -maxdepth 4 \( -name settings.gradle.kts -o -name build.gradle.kts \) -print
+          ZIP="${{ github.event.inputs.project_zip }}"
+
+          echo "ZIP sélectionné : $ZIP"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERREUR : le fichier ZIP n'existe pas dans le dépôt."
+            echo
+            echo "ZIP disponibles :"
+            find . -maxdepth 2 -type f -name "*.zip" -print
             exit 1
           fi
+
+          rm -rf project
+          mkdir -p project
+
+          unzip -q "$ZIP" -d project
+
+          echo "Contenu extrait :"
+          find project -maxdepth 3 -type f | head -100
+
+      - name: Trouver le projet Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SETTINGS=$(find project -type f -name "settings.gradle.kts" -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERREUR : settings.gradle.kts introuvable."
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERREUR : app/build.gradle.kts introuvable."
+            exit 1
+          fi
+
+          echo "Projet Android trouvé : $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Compiler l'APK
         shell: bash
         run: |
           set -euo pipefail
+
           cd "$PROJECT_DIR"
+
           gradle --no-daemon clean :app:assembleDebug --stacktrace
 
-      - name: Vérifier l'APK généré
+      - name: Vérifier l'APK
         shell: bash
         run: |
           set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
+
+          if [ ! -s "$APK" ]; then
+            echo "ERREUR : APK non généré."
+            exit 1
+          fi
+
+          echo "APK généré avec succès :"
           ls -lh "$APK"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fasso-Commerce-V2.4-APK
+          name: Fasso-Commerce-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
